@@ -1,8 +1,9 @@
 %{
+/* yacc / bison turns this file into "parser.cpp" and "parser.h" */
 #include <stdio.h>
 #include <iostream>
 #include <ctype.h>
-#define YYSTYPE double
+#include "shared.h"
 #include "parser.h"
 
 int yylex();

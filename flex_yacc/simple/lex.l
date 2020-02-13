@@ -1,6 +1,7 @@
 %option noyywrap
 %{
-/* C code from lex.l */
+/* lex turns this file into "lexer.cpp" */
+#include "shared.h"
 #include "parser.h"
 
 
