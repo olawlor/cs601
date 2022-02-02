@@ -1,12 +1,13 @@
 /*
- Modern clean-Sheet Instruction Set (McSIS):
-    Stores memory by key/index pairs
-    Highly flexible 64-bit instruction set
- Developed by CS 601 class 2022-01
+ McSIS: Modern clean-Sheet Instruction Set
+ Written by the CS 601 class of 2022 at UAF. 
+ 
+ Version 3: debug support (set m.debug=true)
+ Version 2: sane conditionals, good disassembler, start of assembler support
 */
 #include <sstream>
 
-class McSIS {
+class McSis {
 public:
 	typedef signed long long word; // 64-bit type
 	typedef word key;  // area of memory
@@ -77,9 +78,11 @@ const char * compare_op_name[n_op]={
 "   "," < "," 2?"," 3?",
 " 4?"," 5?"," 6?"," 7?",
 " 8?"," 9?"," A?"," B?",
-" C?"," D?"," =="," F?",
+" C?"," D?"," =="," !=",
 };
 	
+	// If true, print a bunch of stuff as it happens
+	bool debug=false;
 	
 	// Storage access, either internal or external
 	inline word & hashtable(const key &k,const index &x) 
@@ -93,12 +96,14 @@ const char * compare_op_name[n_op]={
 	{
 		if (K==0) return registers[X]; // register access
 		if (K==8) return X; // constant
+		if (debug) std::cout<<"Reading hashtable at "<<registers[K]<<"/"<<registers[X]<<std::endl;
 		return hashtable(registers[K],registers[X]);
 	}
 	word &write_operand(word K,word X)
 	{
 		if (K==0) return registers[X]; // register access
 		if (K==8) illegal("write to constant?!"); 
+		if (debug) std::cout<<"Writing hashtable at "<<registers[K]<<"/"<<registers[X]<<std::endl;
 		return hashtable(registers[K],registers[X]);
 	}
 	
@@ -113,8 +118,11 @@ const char * compare_op_name[n_op]={
 			word op = (cond>>4)&0xF;
 			word B  = (cond>>0)&0xF;
 			
-			if (op==0xE) if (registers[A] != registers[B]) return; // skip instruction
-			if (op==0x1) if (registers[A] >= registers[B]) return; // skip instruction
+			bool do_it=true;
+			if (op==0x1) do_it = (registers[A] < registers[B]);
+			if (op==0xE) do_it = (registers[A] == registers[B]);
+			if (op==0xF) do_it = (registers[A] != registers[B]);
+			if (!do_it) return; //<- skip instructions that failed compare
 		}
 		
 		word overrides = inst>>8; 
@@ -145,7 +153,9 @@ const char * compare_op_name[n_op]={
 		while (!stop && --leash>0) {
 			word fetch=hashtable(registers[PK],registers[PX]++);
 			if (fetch==0) break;
+			if (debug) disassemble_instruction(fetch);
 			runi(fetch);
+			if (debug) dump_registers();
 		}
 		if (leash<=0) illegal("ran too long");
 		
@@ -154,7 +164,7 @@ const char * compare_op_name[n_op]={
 
 	word leash; // instructions remaining to execute
 	// Create a simulator with a block of program machine code
-	McSIS(const word code[], word leash_=100) 
+	McSis(const word code[], word leash_=100) 
 		:registers{0}
 	{
 		stop=false;
@@ -179,6 +189,7 @@ const char * compare_op_name[n_op]={
 	{
 		for (int r=0;r<16;r++)
 			out<<register_name[r]<<"="<<std::hex<<registers[r]<<" ";
+		out<<"\n";
 	}
 	
 	// When CPU hit an illegal operation:
@@ -322,15 +333,15 @@ const char * compare_op_name[n_op]={
 			
 			disassemble_instruction(fetch,out);
 		}
+		out<<"\n";
 	}
 };
-
 
 
 long foo(void)
 {
 	
-	McSIS::word program[]={
+	McSis::word program[]={
 		0x028F8FFF, // [0] r2 = F+F;
 		0x0D0086FF, // [1] DX = 6
 		0x0C0081FF, // [2] DK = 1
@@ -343,7 +354,7 @@ long foo(void)
 		//700,
 		0x0 // terminating zero
 	};
-	McSIS m(program);
+	McSis m(program);
 
 	m.disassemble_instruction(m.assemble_instruction("add r2, $f, $f"));
 	m.disassemble_instruction(m.assemble_instruction("mov DX, $6"));
@@ -352,9 +363,11 @@ long foo(void)
 	
 	m.hashtable(17,23)=-1;
 	
+	m.debug=true;
 	long v=m.run();
 	m.dump_registers();
 
 
 	return v;
 }
+
