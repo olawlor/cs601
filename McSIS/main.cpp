@@ -2,10 +2,14 @@
  McSIS: Modern clean-Sheet Instruction Set
  Written by the CS 601 class of 2022 at UAF. 
  
+ Version 5: improve assembler with regexes
+ Version 4: fully functional assembler!
  Version 3: debug support (set m.debug=true)
  Version 2: sane conditionals, good disassembler, start of assembler support
 */
 #include <sstream>
+#include <stdexcept>
+#include <regex>
 
 class McSis {
 public:
@@ -36,6 +40,8 @@ public:
 	word registers[nregisters];
 	// Register numbers used as index in key 0
 	enum {
+		not_a_register=-1,
+		constant0=0,
 		r1=1,
 		r2=2,
 		PX=8, // program index
@@ -75,10 +81,10 @@ const char *register_name[nregisters]={
 
 enum {n_op=16};
 const char * compare_op_name[n_op]={
-"   "," < "," 2?"," 3?",
+"   ",  "<","<="," 3?",
 " 4?"," 5?"," 6?"," 7?",
 " 8?"," 9?"," A?"," B?",
-" C?"," D?"," =="," !=",
+" C?"," D?", "==", "!=",
 };
 	
 	// If true, print a bunch of stuff as it happens
@@ -120,6 +126,7 @@ const char * compare_op_name[n_op]={
 			
 			bool do_it=true;
 			if (op==0x1) do_it = (registers[A] < registers[B]);
+			if (op==0x2) do_it = (registers[A] <= registers[B]);
 			if (op==0xE) do_it = (registers[A] == registers[B]);
 			if (op==0xF) do_it = (registers[A] != registers[B]);
 			if (!do_it) return; //<- skip instructions that failed compare
@@ -193,21 +200,55 @@ const char * compare_op_name[n_op]={
 	}
 	
 	// When CPU hit an illegal operation:
-	void illegal(std::string why) {
+	int illegal(std::string why) {
 		std::cout<<"FATAL> "<<why<<"\n";
 		
 		dump_registers();
 		
 		stop=true;
+		throw std::runtime_error(why);
+		return -1; // <- flag to caller: everything is broken
 	}
 	
 // Assembly support:
+	// Return a register, or not_a_register
+	int assemble_register_or_not(std::string operand)
+	{
+		for (int r=0;r<nregisters;r++)
+			if (operand==register_name[r])
+				return r;
+		return not_a_register;
+	}
+	
+	// Return a register, or error illegal
+	int assemble_register_for_X(std::string operand)
+	{
+		int r=assemble_register_or_not(operand);
+		if (r!=not_a_register)
+			return r;
+		return illegal("Not a register: "+operand);
+	}
+	// Return a register, or error illegal
+	int assemble_register_for_K(std::string operand)
+	{
+		int r=assemble_register_or_not(operand);
+		if (r!=not_a_register)
+		{
+			if (r==constant0) return illegal("Can't use $0 as a key (key 0 means register access)");
+			if (r==PX) return illegal("Can't use PX as a key (this means a constant)");
+			return r;
+		}
+		return illegal("Not a register: "+operand);
+	}
+	
+	// Return bits of instruction that encode this operand
 	word assemble_operand(std::string operand)
 	{
 		// Check if it's a register (0/ encoding)
-		for (int r=0;r<nregisters;r++)
-			if (operand==register_name[r])
-				return (0x0<<4)+r;
+		int r=assemble_register_or_not(operand);
+		if (r!=not_a_register)
+			return (0x0<<4)+r;
+		
 		// Check if it's a constant ($ encoding)
 		if (operand[0]=='$') {
 			operand=operand.erase(0,1); // remove the $, leave the number
@@ -218,8 +259,15 @@ const char * compare_op_name[n_op]={
 				illegal("can't assemble "+operand);
 		}
 		// Check if it's a hashtable access
-		if (operand[0]=='h')
-			illegal("Not smart enough to assemble hashtable refs yet");
+		if (operand[0]=='h') {
+			std::regex hash(R"~(hashtable\[(\w+)\/(\w+)\])~");
+			auto it=std::sregex_iterator(operand.begin(),operand.end(),hash);
+			if (it==std::sregex_iterator()) return illegal("Can't parse "+operand+": missing hashtable?");
+			if ((*it).str()!=operand) return illegal("Extra match around "+operand+": extra stuff?");
+			std::string k=(*it).str(1);
+			std::string x=(*it).str(2);
+			return (assemble_register_for_K(k)<<4)+(assemble_register_for_X(x));
+		}
 		illegal("Unknown operand type "+operand);
 		return 0;
 	}
@@ -235,12 +283,44 @@ const char * compare_op_name[n_op]={
 		return s;
 	}
 
+	word assemble_condition(std::string compare_op)
+	{
+		for (int c=0;c<n_op;c++)
+			if (compare_op==compare_op_name[c])
+				return c;
+		return illegal("not a valid comparison operator: "+compare_op);
+	}
+	
+	word assemble_conditional(std::string condstr)
+	{
+		
+		std::regex ifreg(R"~(if\(([$\w]+)([<>=!]+)([$\w]+)\))~");
+		auto it=std::sregex_iterator(condstr.begin(),condstr.end(),ifreg);
+		if (it==std::sregex_iterator()) return illegal("Can't parse "+condstr+": working if statement?");
+		if ((*it).str()!=condstr) return illegal("Extra match around "+condstr+": extra stuff?");
+		std::string A=(*it).str(1);
+		std::string cond=(*it).str(2);
+		std::string B=(*it).str(3);
+		
+		return (assemble_register_for_X(A)<<8)+
+			(assemble_condition(cond)<<4)+
+			(assemble_register_for_X(B)<<0);
+	}
+
 	word assemble_instruction(std::string line)
 	{
 		std::istringstream in(line);
 		word inst=0;
 		
 		std::string opcode; in>>opcode;
+		if (opcode.rfind("if(", 0) == 0) { // starts with a conditional
+			std::string condstr=opcode;
+			
+			inst += assemble_conditional(condstr)<<32;
+			
+			in>>opcode;
+		}
+		
 		std::string D; in>>D; D=decomma(D);
 		std::string A; in>>A; A=decomma(A);
 		std::string B; in>>B; B=decomma(B);
@@ -265,7 +345,7 @@ const char * compare_op_name[n_op]={
 	{
 		if (K==0) out<<register_name[X]<<""; // register access
 		else if (K==8) out<<"$"<<X; // constant
-		else  out<<"hashtable["<<register_name[K]<<","<<register_name[X]<<"]";
+		else  out<<"hashtable["<<register_name[K]<<"/"<<register_name[X]<<"]";
 	}
 	void disassemble_instruction(word inst,std::ostream &out=std::cout)
 	{
@@ -287,7 +367,7 @@ const char * compare_op_name[n_op]={
 			word A  = (cond>>8)&0xF;
 			word op = (cond>>4)&0xF;
 			word B  = (cond>>0)&0xF;
-			out<<"Conditional["<<register_name[A]<<compare_op_name[op]<<register_name[B]<<"] ";
+			out<<"if("<<register_name[A]<<compare_op_name[op]<<register_name[B]<<") ";
 		}
 		
 		word overrides = inst>>8; 
@@ -356,12 +436,18 @@ long foo(void)
 	};
 	McSis m(program);
 
+	m.disassemble_instruction(m.assemble_instruction("add hashtable[AK/DX], r3, $5"));
+	m.disassemble_instruction(m.assemble_instruction("mov hashtable[r6/DX], $5"));
+	m.disassemble_instruction(m.assemble_instruction("mov hashtable[r2/DX], $F"));
 	m.disassemble_instruction(m.assemble_instruction("add r2, $f, $f"));
+	m.disassemble_instruction(m.assemble_instruction("if(r3<$0) add r2, $f, $f"));
+	m.disassemble_instruction(m.assemble_instruction("if(DX==$0) add r2, $f, $f"));
+	m.disassemble_instruction(m.assemble_instruction("if(DX<=$0) add r2, $f, $f"));
 	m.disassemble_instruction(m.assemble_instruction("mov DX, $6"));
 
 	m.disassemble();
 	
-	m.hashtable(17,23)=-1;
+	m.hashtable(17,-3)='1';
 	
 	m.debug=true;
 	long v=m.run();
