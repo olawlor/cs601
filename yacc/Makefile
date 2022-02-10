@@ -9,6 +9,7 @@ run: calc
 
 
 clean:
-	- rm parser.cpp
+	- rm parser.cpp calc
+
 
 
