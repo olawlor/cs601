@@ -1,0 +1,3 @@
+    function x(x i64) => r i64 {
+        x*x => r;
+    }
