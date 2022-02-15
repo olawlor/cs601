@@ -1,0 +1,8 @@
+function square(x i64) => r i64 {
+    x*x => r;
+}
+
+function sum(x i64,y i64) => r i64 {
+    x+y => r;
+}
+

@@ -1,15 +1,25 @@
-all: calc run
 
-calc: example.yacc
-	yacc $< -o parser.cpp 
-	g++ -Wall parser.cpp -o $@
+CFLAGS=-Wall -g
+
+all: run
 
 run: calc
-	./$<  < ex.mcs || /bin/true
+	./calc < MCScript_example.mcs
 
+calc: parser.o lexer.o symbol_table.o
+	g++ $(CFLAGS) -o $@ $+ -lm
 
-clean:
-	- rm parser.cpp calc
+%.o: %.cpp parser.h
+	g++ $(CFLAGS) -c -Wall -std=c++11 -o $@ $<
 
+parser.cpp lexer.cpp: yacc.y lex.l
+	lex -o lexer.cpp lex.l
+	bison $< -o parser.cpp --defines=parser.h
 
+clean: FORCE
+	rm -f parser.* lexer.* *.o calc
 
+FORCE:
+
+packages:
+	sudo apt-get install flex bison make g++
