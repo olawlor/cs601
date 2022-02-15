@@ -151,7 +151,14 @@ int yyerror(const char *why) {
 	return 1;
 }
 
-int main(void) {
+extern bool verbose_tokens; // <- declared in lex.l
+int main(int argc,char *argv[]) 
+{
+    for (int argi=1;argi<argc;argi++) {
+        if (argv[argi]==std::string("-v")) verbose_tokens=true;
+        else std::cerr<<"Unknown command line option "<<argv[argi]<<std::endl;
+    }
+    
 	return yyparse();
 }
 

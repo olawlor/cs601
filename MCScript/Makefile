@@ -4,7 +4,7 @@ CFLAGS=-Wall -g
 all: run
 
 run: calc
-	./calc < MCScript_example.mcs
+	./calc -v < MCScript_example.mcs
 
 calc: parser.o lexer.o symbol_table.o
 	g++ $(CFLAGS) -o $@ $+ -lm

@@ -5,7 +5,7 @@
 #include "ast.h"
 #include "parser.h"
 
-bool verbose_tokens=true;
+bool verbose_tokens=false;
 
 %}
 
@@ -13,9 +13,9 @@ digit [0-9]
 
 
 %%
-{digit}+|{digit}+[.]{digit}*|[.]{digit}+ { // a number
+{digit}+ { // a number
     if (verbose_tokens) std::cout<<"token num ("<<yytext<<")\n";
-    double parsed_num = atof(yytext);
+    long parsed_num = atol(yytext);
     yylval=new const_val(parsed_num);
     return NUM; 
 }

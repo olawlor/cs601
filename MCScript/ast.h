@@ -147,9 +147,9 @@ public:
 };
 
 class const_val : public value_type {
-    double val;
+    long val;
 public:
-    const_val(double val_) :val(val_) {}
+    const_val(long val_) :val(val_) {}
     
     /// Emit code copying our value into this register number
     virtual listing_t getval(regnum target) {
@@ -159,7 +159,7 @@ public:
     
 protected:
     virtual void print_me() {
-        printf("%f",val);
+        std::cout<<val;
     }
 };
 
