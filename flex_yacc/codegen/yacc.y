@@ -23,9 +23,9 @@ int yyerror(const char *s);
 input: /* empty */
 	| input line 
 	{ 
-	    printf("; ");
+	    printf("\nExpression: ");
 	    $2 -> print_infix();
-	    printf("\n");
+	    printf("\nCode: \n");
 	    $2 -> codegen();
 	}
 ;

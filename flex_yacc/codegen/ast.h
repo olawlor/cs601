@@ -13,6 +13,20 @@
 /// Compiler backend architecture support:
 typedef int listing_t; // number of lines of code used (HACK!)
 
+typedef int regnum; // register number
+
+/// Generate a register name from a register number.
+inline const char *reggen(regnum r) {
+    const char *table[16]={
+        "rax","rcx","rdx","rbx","rsp","rbp","rsi","rdi",
+        "r8","r9","r10","r11","r12","r13","r14","r15"
+    };
+    return table[r];
+}
+enum {RETREG=0}; // number of the return value register
+enum {VARREG=6}; // first register number to use for variables
+
+
 inline listing_t die(const char *why) {
     printf("Fatal error: %s\n",why);
     return 0;
