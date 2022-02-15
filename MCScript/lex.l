@@ -5,7 +5,7 @@
 #include "ast.h"
 #include "parser.h"
 
-bool verbose_tokens=false;
+bool verbose_tokens=true;
 
 %}
 

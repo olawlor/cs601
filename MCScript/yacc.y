@@ -8,6 +8,9 @@ int yyerror(const char *s);
 
 %}
 
+// This improves errors a lot
+%define parse.error verbose
+
 // For some reason yacc can be used to define lexer token symbolic names
 %token NUM FUNCTION SEMI VAR SPACE TYPENAME_INT NEWLINE
 
@@ -64,14 +67,10 @@ wn:
     NEWLINE
 ;
 
-function_body: wn '{' NEWLINE indentation lines NEWLINE '}' wn 
+function_body: wn '{' NEWLINE lines wn '}' wn 
     {
-        $$ = $5;
+        $$ = $4;
     }
-    ;
-
-indentation:
-    SPACE
     ;
 
 lines: lines line
@@ -84,12 +83,23 @@ lines: lines line
     }
     ;
 
-line: assign_expr expr_end;
+line: indentation assign_expr expr_end
+    {
+        $$ = $2;
+    }
+;
+
+indentation:
+    SPACE
+    ;
 
 expr_end:
     SEMI
+|
+    NEWLINE
 ;
 
+// Top-level expression:
 assign_expr:
   expr
   {
@@ -100,7 +110,7 @@ assign_expr:
      $$ = new assignment_operator($1,$3); 
   }
  |
-  expr arrow_operator VAR typename {
+  expr arrow_operator VAR w typename {
      $$ = new assignment_operator($1,$3); 
   }
 ;

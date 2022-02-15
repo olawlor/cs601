@@ -1,8 +1,14 @@
 function square(x i64) => r i64 {
-    x*x => r;
+    x*x => r
 }
 
 function sum(x i64,y i64) => r i64 {
     x+y => r;
 }
+
+function const(x i64,y i64) => r i64 {
+    x+3 => z i64
+    z*y => r
+}
+
 
