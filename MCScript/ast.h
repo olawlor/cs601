@@ -34,7 +34,8 @@ inline listing_t die(const char *why) {
 
 /* This is how we pass around references to a 
   syntax_tree_node.  std::shared_ptr would be more
-  sensible if a workaround can be found for using it in yacc $$ vars.
+  sensible if a workaround can be found for using it
+  in yacc $$ vars.
 */
 typedef class syntax_tree_node *syntax_ptr;
 
@@ -85,14 +86,16 @@ public:
         printf(")");
     }
     
-    // Tree-like onscreen, rotated 90 deg
+    // Tree-like onscreen, rotated 90 deg:
+    //   cant your head to the *left*!
     void print_indent(int indent=0) {
-        if (left) left -> print_indent(indent+1);
+        if (right) right -> print_indent(indent+1);
         for (int i=0;i<indent;i++) printf("    ");
         // printf("%s: ",stuff); 
         print_me(); //<- child type
         printf("\n");
-        if (right) right -> print_indent(indent+1);
+
+        if (left) left -> print_indent(indent+1);
     }
     
     // Actual JSON

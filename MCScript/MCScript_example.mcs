@@ -8,7 +8,8 @@ function sum(x i64,y i64) => r i64 {
 
 function hairy(x i64,y i64) => r i64 {
     x+3 => z i64
-    z*y => r
+    squarey(x)(x)*z => z
+    z*x(y) => r
 }
 
 

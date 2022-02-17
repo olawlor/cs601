@@ -20,6 +20,7 @@ int yyerror(const char *s);
 %left '-'
 %left '*'
 %left '/'
+%left '('
 
 %%
 
@@ -31,8 +32,14 @@ function: FUNCTION SPACE VAR args return_type function_body
     {
 	    std::cout<<"\nFunction: ";
 	    $3 -> print_infix();
-	    std::cout<<"\nBody: ";
+	    std::cout<<"\nBody: \n";
+	    $6 -> print_indent();
+	    std::cout<<"\n\n";
 	    $6 -> print_infix();
+	    std::cout<<"\n\n";
+	    $6 -> codegen();
+	    std::cout<<"\n\n";
+	    $6 -> print_LISP();
 	    std::cout<<"\n\n";
     }
 ;
@@ -50,7 +57,11 @@ return_type: arrow_operator VAR w typename;
 arrow_operator:
     w '=' '>' w;
 
-typename: TYPENAME_INT;
+typename: TYPENAME_INT 
+    {
+        $$ = new var_ref("i64",0);
+    }
+    ;
 typename: VAR;
 
 // optional whitespace:
@@ -73,9 +84,9 @@ function_body: wn '{' NEWLINE lines wn '}' wn
     }
     ;
 
-lines: lines line
+lines: line lines
     {
-        $$ = new binary_operator(";",$2,$1);
+        $$ = new binary_operator(";",$1,$2);
     }
     | /* empty */
     {
@@ -111,7 +122,8 @@ assign_expr:
   }
  |
   expr arrow_operator VAR w typename {
-     $$ = new assignment_operator($1,$3); 
+     $$ = new assignment_operator($1,
+        new binary_operator("TypeDecl",$3,$5)); 
   }
 ;
 
@@ -131,6 +143,10 @@ expr: number
  |
   expr '/' expr  {
      $$ = new binary_operator("/",$1,$3); 
+  }
+ |
+  expr '(' expr ')'  {
+     $$ = new binary_operator("()",$1,$3); 
   }
  |
   '(' expr ')' {
