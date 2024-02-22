@@ -17,9 +17,9 @@ This is a single-file version collected from the files at:
      https://github.com/vaivaswatha/lljit
 
 Dr. Orion Lawlor heavily modified this 2024-02-21 by:
-   - Simplify by removing all the llvm::Expected and use inline error handling.
+   - Simplify by removing most llvm::Expected, to use inline error handling.
    - Add raw machine code dump to check disassembly
-   - Add compiler passes following this obsolete gist:
+   - Add optimizer passes following this obsolete gist:
         https://gist.github.com/5pilow/c7b6d3b21cc93eadd1eb298d2d86c2b6
 
  * Copyright (C) 2020 Vaivaswatha N
@@ -79,16 +79,21 @@ Dr. Orion Lawlor heavily modified this 2024-02-21 by:
 // to the symbols inside it. TODO: Handle multiple modules.
 class ExampleJIT {
 private:
-  bool OK=false;
-  std::unique_ptr<llvm::orc::LLJIT> JIT;
+    bool OK=false;
+    std::unique_ptr<llvm::orc::LLJIT> JIT;
+    std::unique_ptr<llvm::LLVMContext> Ctx;
+
+    llvm::Error addCallableFunctions(void);
+    std::unique_ptr<llvm::Module> addIR(const std::string &Filename);
+    void optimize(const std::unique_ptr<llvm::Module> &M);
 
 public:
-  // Compile this LLVM IR file
-  ExampleJIT(const std::string &FileName, llvm::ObjectCache * = nullptr);
-  
-  // Get address for @Symbol inside the compiled IR, ready to be used.
-  //  Returns NULL if the lookup failed.
-  void *lookup(const std::string &Symbol);
+    // Compile this LLVM IR file
+    ExampleJIT(const std::string &FileName);
+
+    // Get address for @Symbol inside the compiled IR, ready to be used.
+    //  Returns NULL if the lookup failed.
+    void *lookup(const std::string &Symbol);
 };
 
 
@@ -120,8 +125,8 @@ void print_long(long v)
 
 // Map function names to addresses:
 struct FunctionsMap {
-  const char *FName;
-  const void *FAddr;
+    const char *FName;
+    const void *FAddr;
 };
 const static FunctionsMap CallableFuncs[] = {
     {"printf", (void *)printf},
@@ -129,139 +134,125 @@ const static FunctionsMap CallableFuncs[] = {
     {"malloc", (void *)malloc},
     {"exit", (void *)exit},
     {"print_long", (void *)print_long}, //<- can also call local functions
+    {"print_hex", (void *)print_hex}, //<- can also call local functions
 };
 
-// Add functions in SRTL that the JIT'ed code can access.
-Error addExampleBuiltins(orc::LLJIT &JIT, const DataLayout &DL) {
-  orc::SymbolMap M;
-  orc::MangleAndInterner Mangle(JIT.getExecutionSession(), DL);
-  // Register every symbol that can be accessed from the JIT'ed code.
-  for (auto fa : CallableFuncs) {
-    M[Mangle(fa.FName)] = JITEvaluatedSymbol(
+// Add functions in the table above that the JIT'ed code can access.
+Error ExampleJIT::addCallableFunctions(void) {
+    const DataLayout &DL = JIT->getDataLayout();
+    orc::SymbolMap syms;
+    orc::MangleAndInterner Mangle(JIT->getExecutionSession(), DL);
+    // Register every symbol that can be accessed from the JIT'ed code.
+    for (auto fa : CallableFuncs) {
+    syms[Mangle(fa.FName)] = JITEvaluatedSymbol(
         pointerToJITTargetAddress(fa.FAddr), JITSymbolFlags());
-  }
+    }
 
-  if (auto Err = (JIT.getMainJITDylib().define(absoluteSymbols(M))))
-    return Err;
-
-  return Error::success();
+    return JIT->getMainJITDylib().define(absoluteSymbols(syms));
 }
 
+// Parse this LLVM IR file into a Module
+std::unique_ptr<llvm::Module> ExampleJIT::addIR(const std::string &Filename)
+{
+    SMDiagnostic Smd;
+    auto M = parseIRFile(Filename, Smd, *Ctx);
+    if (!M) { // Get compile errors
+        std::string Err;
+        raw_string_ostream OS(Err);
+        Smd.print("lljit", OS);
+        ErrorHandler(createStringError(inconvertibleErrorCode(), Err.c_str()));
+    }
+    return M;
+}
 
-using namespace orc;
+// Run optimization passes on this LLVM IR Module
+//  Source: https://llvm.org/docs/tutorial/BuildingAJIT2.html
+void ExampleJIT::optimize(const std::unique_ptr<llvm::Module> &M)
+{
+    auto FPM = std::make_unique<llvm::legacy::FunctionPassManager>(M.get());
 
-ExampleJIT::ExampleJIT(const std::string &Filename, ObjectCache *OC) 
+    // Add some optimizations.
+    FPM->add(createInstructionCombiningPass());
+    FPM->add(createReassociatePass());
+    FPM->add(createGVNPass());
+    FPM->add(createCFGSimplificationPass());
+    FPM->doInitialization();
+
+    // Run the optimizations over all functions in the module
+    for (auto &F : *M)
+        FPM->run(F);
+}
+
+// Compile this LLVM IR file
+ExampleJIT::ExampleJIT(const std::string &Filename) 
     :OK(false)
 {
-  InitializeNativeTarget();
-  InitializeNativeTargetAsmPrinter();
+    InitializeNativeTarget();
+    InitializeNativeTargetAsmPrinter();
 
-  // Create an LLJIT instance with a custom CompileFunction and
-  // ObjectLinkingLayer.
-  auto J = orc::LLJITBuilder()
-               .setCompileFunctionCreator(
-                   [&](JITTargetMachineBuilder JTMB)
-                       -> Expected<std::unique_ptr<IRCompileLayer::IRCompiler>> {
-                     JTMB.setCodeGenOptLevel(CodeGenOpt::Aggressive); // -O2
-                     auto TM = JTMB.createTargetMachine();
-                     if (!TM)
-                       return TM.takeError();
-                     return std::make_unique<TMOwningSimpleCompiler>(std::move(*TM), OC);
-                   })
-               .setObjectLinkingLayerCreator(
-                   [&](ExecutionSession &ES,
-                                                 const Triple &TT)
-                                             -> std::unique_ptr<ObjectLayer> {
-                 
-                 // the code is taken from LLJIT.cpp.
-                 auto GetMemMgr = []() {
-                   return std::make_unique<SectionMemoryManager>();
-                 };
-                 auto ObjLinkingLayer = std::make_unique<RTDyldObjectLinkingLayer>(
-                     ES, std::move(GetMemMgr));
-                 if (TT.isOSBinFormatCOFF()) {
-                   ObjLinkingLayer->setOverrideObjectFlagsWithResponsibilityFlags(
-                       true);
-                   ObjLinkingLayer->setAutoClaimResponsibilityForObjectSymbols(true);
-                 }
-                 return ObjLinkingLayer;
-               })
-               .create();
+    // Create LLVM context
+    Ctx = std::make_unique<LLVMContext>();
 
-  if (!J)
-    return;
+    // Create an LLJIT instance
+    auto J = orc::LLJITBuilder().create();
+    if (!J) {
+        return;
+    }
+    JIT = std::move(*J);
 
-  JIT = std::move(*J);
+    if (addCallableFunctions()) {
+        return;
+    }
 
-  if (auto Err =
-          addExampleBuiltins(*JIT, JIT->getDataLayout()))
-    return;
+    // Parse IR into a Module
+    std::unique_ptr<llvm::Module> M = addIR(Filename);
+    if (!M) {
+        return;
+    }
+    
+    // Optimization passes
+    optimize(M);
 
-  auto Ctx = std::make_unique<LLVMContext>();
-  SMDiagnostic Smd;
-  auto M = parseIRFile(Filename, Smd, *Ctx);
-  if (!M) {
-    std::string ErrMsg;
-    raw_string_ostream OS(ErrMsg);
-    Smd.print("lljit", OS);
-    ErrorHandler(createStringError(inconvertibleErrorCode(), OS.str().c_str()));
-  }
-  
-  //  Source: https://llvm.org/docs/tutorial/BuildingAJIT2.html
-  // Optimization passes on module: create a function pass manager.
-  auto FPM = std::make_unique<legacy::FunctionPassManager>(M.get());
+    // Add the Module to our JIT
+    orc::ThreadSafeModule TSM(std::move(M), std::move(Ctx));
+    if (auto Err = JIT->addIRModule(std::move(TSM))) {
+        ErrorHandler( std::move(Err) );
+        return;
+    }
 
-  // Add some optimizations.
-  FPM->add(createInstructionCombiningPass());
-  FPM->add(createReassociatePass());
-  FPM->add(createGVNPass());
-  FPM->add(createCFGSimplificationPass());
-  FPM->doInitialization();
-
-  // Run the optimizations over all functions in the module
-  for (auto &F : *M)
-    FPM->run(F);
-
-  ThreadSafeModule TSM(std::move(M), std::move(Ctx));
-  if (auto Err = JIT->addIRModule(std::move(TSM))) {
-    ErrorHandler( std::move(Err) );
-  }
-  
-  OK = true;
+    OK = true;
 }
 
+// Return the in-memory address of this symbol
 void * ExampleJIT::lookup(const std::string &Symbol) {
+    auto SA = JIT->lookup(Symbol);
+    if (SA.takeError()) {
+        return 0;
+    }
 
-  auto SA = JIT->lookup(Symbol);
-  if (auto Err = SA.takeError()) {
-    return 0;
-  }
-
-  return reinterpret_cast<void *>((*SA).getAddress());
+    return reinterpret_cast<void *>((*SA).getAddress());
 }
-
-
-using namespace llvm;
 
 
 int main(int argc, char *argv[]) {
+    // Compile the LLVM IR input
+    ExampleJIT jit("in.ll");
 
-  // Compile the LLVM IR input
-  ExampleJIT jit("in.ll");
-  
-  // Look up the code entry point
-  typedef long (*function_ptr)();
-  function_ptr run = reinterpret_cast<function_ptr>(jit.lookup("jitentry"));
-  
-  // Print some machine code at that entry point
-  print_hex((void *)run,32);
+    // Look up the code entry point
+    typedef long (*function_ptr)();
+    function_ptr run = reinterpret_cast<function_ptr>(
+    jit.lookup("jitentry")
+    );
 
-  // Run it
-  long result = run();
-  
-  printf(" result %ld (%08lx)\n", result, result);
+    // Print some machine code at that entry point
+    print_hex((void *)run,32);
 
-  return EXIT_SUCCESS;
+    // Run the code
+    long result = run();
+
+    // Show the returned value
+    printf(" result %ld (%08lx)\n", result, result);
+    return EXIT_SUCCESS;
 }
 
 
