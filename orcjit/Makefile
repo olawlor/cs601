@@ -10,6 +10,9 @@ jit: main.cpp
 run: jit
 	./jit
 
+in.ll: examples/input.c Makefile
+	clang -S -emit-llvm $< -o $@
+
 clean:
 	rm jit
 

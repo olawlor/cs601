@@ -1,11 +1,9 @@
 /*
 Demonstrates a Just-In-Time (JIT) compiler using LLVM
- 
-Set up LLVM ORC packages for clang 14 on Ubuntu 22.04:
- sudo apt-get install clang llvm-dev libstdc++-12-dev
-The llvm that comes with Ubuntu 18.04 is too old for this code.
- 
-Compile with:
+
+Once LLVM is set up, compile this file with:
+ make
+or
  clang++ main.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o jit
 
 Run a LLVM IR file in.ll with:
@@ -20,8 +18,9 @@ This is a single-file version collected from the files at:
 
 Dr. Orion Lawlor heavily modified this 2024-02-21 by:
    - Simplify by removing all the llvm::Expected and use inline error handling.
-   - Add machine code dump
-
+   - Add raw machine code dump to check disassembly
+   - Add compiler passes following this obsolete gist:
+        https://gist.github.com/5pilow/c7b6d3b21cc93eadd1eb298d2d86c2b6
 
  * Copyright (C) 2020 Vaivaswatha N
  *
@@ -126,9 +125,10 @@ struct FunctionsMap {
 };
 const static FunctionsMap CallableFuncs[] = {
     {"printf", (void *)printf},
-    {"print_long", (void *)print_long},
+    {"puts", (void *)puts}, //< optimizer will swap printf call to puts
     {"malloc", (void *)malloc},
     {"exit", (void *)exit},
+    {"print_long", (void *)print_long}, //<- can also call local functions
 };
 
 // Add functions in SRTL that the JIT'ed code can access.
@@ -162,12 +162,14 @@ ExampleJIT::ExampleJIT(const std::string &Filename, ObjectCache *OC)
                .setCompileFunctionCreator(
                    [&](JITTargetMachineBuilder JTMB)
                        -> Expected<std::unique_ptr<IRCompileLayer::IRCompiler>> {
+                     JTMB.setCodeGenOptLevel(CodeGenOpt::Aggressive); // -O2
                      auto TM = JTMB.createTargetMachine();
                      if (!TM)
                        return TM.takeError();
                      return std::make_unique<TMOwningSimpleCompiler>(std::move(*TM), OC);
                    })
-               .setObjectLinkingLayerCreator([&](ExecutionSession &ES,
+               .setObjectLinkingLayerCreator(
+                   [&](ExecutionSession &ES,
                                                  const Triple &TT)
                                              -> std::unique_ptr<ObjectLayer> {
                  
@@ -204,6 +206,21 @@ ExampleJIT::ExampleJIT(const std::string &Filename, ObjectCache *OC)
     Smd.print("lljit", OS);
     ErrorHandler(createStringError(inconvertibleErrorCode(), OS.str().c_str()));
   }
+  
+  //  Source: https://llvm.org/docs/tutorial/BuildingAJIT2.html
+  // Optimization passes on module: create a function pass manager.
+  auto FPM = std::make_unique<legacy::FunctionPassManager>(M.get());
+
+  // Add some optimizations.
+  FPM->add(createInstructionCombiningPass());
+  FPM->add(createReassociatePass());
+  FPM->add(createGVNPass());
+  FPM->add(createCFGSimplificationPass());
+  FPM->doInitialization();
+
+  // Run the optimizations over all functions in the module
+  for (auto &F : *M)
+    FPM->run(F);
 
   ThreadSafeModule TSM(std::move(M), std::move(Ctx));
   if (auto Err = JIT->addIRModule(std::move(TSM))) {
@@ -229,18 +246,20 @@ using namespace llvm;
 
 int main(int argc, char *argv[]) {
 
-  // Compile the LLVM IR
+  // Compile the LLVM IR input
   ExampleJIT jit("in.ll");
   
   // Look up the code entry point
-  typedef void (*function_ptr)();
+  typedef long (*function_ptr)();
   function_ptr run = reinterpret_cast<function_ptr>(jit.lookup("jitentry"));
   
   // Print some machine code at that entry point
   print_hex((void *)run,32);
 
   // Run it
-  run();
+  long result = run();
+  
+  printf(" result %ld (%08lx)\n", result, result);
 
   return EXIT_SUCCESS;
 }
