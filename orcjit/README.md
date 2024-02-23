@@ -3,7 +3,7 @@ This is a tiny single-file demo of how to call LLVM ORC's just-in-time (JIT) com
 
 
 ## Configure Packages
-This code has been tested with LLVM versions from 11 through 17.
+This code has been tested with LLVM versions from 10 through 17.
 
 To set up LLVM ORC packages for clang 14 on Ubuntu 22.04:
 
