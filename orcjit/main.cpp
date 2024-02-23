@@ -67,6 +67,7 @@ Dr. Orion Lawlor heavily modified this 2024-02-21 by:
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Utils.h"
+#include "llvm/Transforms/IPO/Inliner.h"
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ExecutionEngine/ObjectCache.h"
@@ -176,10 +177,13 @@ void ExampleJIT::optimize(const std::unique_ptr<llvm::Module> &M)
     FPM->add(createReassociatePass());
     FPM->add(createGVNPass());
     FPM->add(createCFGSimplificationPass());
+    // FPM->add(new llvm::InlinerPass(false)); //   https://llvm.org/doxygen/classllvm_1_1InlinerPass.html
+    
+    
     FPM->doInitialization();
 
     // Run the optimizations over all functions in the module
-    for (auto &F : *M)
+    for (llvm::Function &F : *M)
         FPM->run(F);
 }
 
@@ -230,7 +234,11 @@ void * ExampleJIT::lookup(const std::string &Symbol) {
         return 0;
     }
 
+#if LLVM_VERSION_MAJOR >= 15
+    return reinterpret_cast<void *>((*SA).getValue());
+#else
     return reinterpret_cast<void *>((*SA).getAddress());
+#endif
 }
 
 
@@ -241,7 +249,7 @@ int main(int argc, char *argv[]) {
     // Look up the code entry point
     typedef long (*function_ptr)();
     function_ptr run = reinterpret_cast<function_ptr>(
-    jit.lookup("jitentry")
+        jit.lookup("jitentry")
     );
 
     // Print some machine code at that entry point
