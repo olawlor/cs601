@@ -47,7 +47,6 @@ Dr. Orion Lawlor heavily modified this 2024-02-21 by:
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
-#include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/ObjectCache.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
@@ -95,6 +94,9 @@ public:
     // Get address for @Symbol inside the compiled IR, ready to be used.
     //  Returns NULL if the lookup failed.
     void *lookup(const std::string &Symbol);
+    
+    // Check if we're OK
+    operator bool () { return OK; }
 };
 
 
@@ -102,7 +104,7 @@ public:
 using namespace llvm;
 
 // Error handling strategy
-ExitOnError ErrorHandler;
+ExitOnError ExitOnErr;
 
 
 // Print this area as hexadecimal bytes
@@ -145,8 +147,16 @@ Error ExampleJIT::addCallableFunctions(void) {
     orc::MangleAndInterner Mangle(JIT->getExecutionSession(), DL);
     // Register every symbol that can be accessed from the JIT'ed code.
     for (auto fa : CallableFuncs) {
-    syms[Mangle(fa.FName)] = JITEvaluatedSymbol(
-        pointerToJITTargetAddress(fa.FAddr), JITSymbolFlags());
+        syms[Mangle(fa.FName)] = 
+#if LLVM_VERSION_MAJOR >= 17  /* compiles, but not fully working yet */
+            orc::ExecutorSymbolDef(
+                orc::ExecutorAddr::fromPtr(fa.FAddr), JITSymbolFlags()
+            );
+#else
+            JITEvaluatedSymbol(
+                 pointerToJITTargetAddress(fa.FAddr), JITSymbolFlags()
+            );
+#endif
     }
 
     return JIT->getMainJITDylib().define(absoluteSymbols(syms));
@@ -161,9 +171,28 @@ std::unique_ptr<llvm::Module> ExampleJIT::addIR(const std::string &Filename)
         std::string Err;
         raw_string_ostream OS(Err);
         Smd.print("lljit", OS);
-        ErrorHandler(createStringError(inconvertibleErrorCode(), Err.c_str()));
+        ExitOnErr(createStringError(inconvertibleErrorCode(), Err.c_str()));
     }
     return M;
+}
+
+// Print this LLVM IR module's functions and blocks
+void printModule(const std::unique_ptr<llvm::Module> &M,const char *where)
+{
+    for (llvm::Function &F : *M)
+    {
+        errs()<<"define "<<F.getName()<<"() { ;  ("<<where<<")\n";
+        for (llvm::BasicBlock &B : F)
+        {
+            if (B.getName()!="") errs()<<"\n  "<<B.getName()<<": ";
+            for (llvm::BasicBlock *pre : predecessors(&B))
+                errs()<<"    ; Predecessor: %"<<pre->getName()<<"\n";
+            
+            for (llvm::Instruction &I : B)
+                errs()<<"    "<<I<<"\n";
+        }
+        errs()<<"}\n\n";
+    }
 }
 
 // Run optimization passes on this LLVM IR Module
@@ -183,8 +212,10 @@ void ExampleJIT::optimize(const std::unique_ptr<llvm::Module> &M)
     FPM->doInitialization();
 
     // Run the optimizations over all functions in the module
-    for (llvm::Function &F : *M)
-        FPM->run(F);
+    const int nrepeat=2;
+    for (int repeat=0;repeat<nrepeat;repeat++) 
+        for (llvm::Function &F : *M)
+            FPM->run(F);
 }
 
 // Compile this LLVM IR file
@@ -200,6 +231,7 @@ ExampleJIT::ExampleJIT(const std::string &Filename)
     // Create an LLJIT instance
     auto J = orc::LLJITBuilder().create();
     if (!J) {
+        ExitOnErr(std::move(J));
         return;
     }
     JIT = std::move(*J);
@@ -214,13 +246,17 @@ ExampleJIT::ExampleJIT(const std::string &Filename)
         return;
     }
     
+    printModule(M,"before optimization");
+    
     // Optimization passes
     optimize(M);
+    
+    printModule(M,"after optimization");
 
     // Add the Module to our JIT
     orc::ThreadSafeModule TSM(std::move(M), std::move(Ctx));
     if (auto Err = JIT->addIRModule(std::move(TSM))) {
-        ErrorHandler( std::move(Err) );
+        ExitOnErr( std::move(Err) );
         return;
     }
 
@@ -245,6 +281,10 @@ void * ExampleJIT::lookup(const std::string &Symbol) {
 int main(int argc, char *argv[]) {
     // Compile the LLVM IR input
     ExampleJIT jit("in.ll");
+    if (!jit) {
+        printf("Error setting up LLVM JIT\n");
+        return 1;
+    }
 
     // Look up the code entry point
     typedef long (*function_ptr)();
