@@ -3,7 +3,7 @@ This is a tiny single-file demo of how to call LLVM ORC's just-in-time (JIT) com
 
 
 ## Configure Packages
-This code has been tested with LLVM versions from 10 through 17.
+This code has been tested with LLVM versions from 10 through 16.
 
 To set up LLVM ORC packages for clang 14 on Ubuntu 22.04:
 
@@ -16,6 +16,7 @@ To set up LLVM ORC packages for clang 10 on Ubuntu 20.04:
 (Check the right libstdc++ header with   clang++ -v -E)
 
 The llvm that comes with Ubuntu 18.04 (version 6) is too old for this code.
+LLVM 17 seems to fail because of a missing `llvm_orc_registerEHFrameSectionWrapper` symbol.
 
 ## Compile and Run
 
