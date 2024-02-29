@@ -202,17 +202,17 @@ void ExampleJIT::optimize(const std::unique_ptr<llvm::Module> &M)
     auto FPM = std::make_unique<llvm::legacy::FunctionPassManager>(M.get());
 
     // Add some optimizations.
-    FPM->add(createInstructionCombiningPass());
-    FPM->add(createReassociatePass());
     FPM->add(createGVNPass());
+    FPM->add(createInstructionCombiningPass());
     FPM->add(createCFGSimplificationPass());
+    FPM->add(createReassociatePass());
     // FPM->add(new llvm::InlinerPass(false)); //   https://llvm.org/doxygen/classllvm_1_1InlinerPass.html
     
     
     FPM->doInitialization();
 
     // Run the optimizations over all functions in the module
-    const int nrepeat=2;
+    const int nrepeat=3;
     for (int repeat=0;repeat<nrepeat;repeat++) 
         for (llvm::Function &F : *M)
             FPM->run(F);
