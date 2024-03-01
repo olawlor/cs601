@@ -1,7 +1,7 @@
-define i32 @jitentry() {
+define i32 @jitentry(i32 %arg0) {
   %zero = add i32 0,0
   %r1addr = alloca i32, align 4
-  store i32 %zero, i32 *%r1addr, align 4
+  store i32 %arg0, i32 *%r1addr, align 4
   %r2addr = alloca i32, align 4
   store i32 %zero, i32 *%r2addr, align 4
   %r3addr = alloca i32, align 4
@@ -31,11 +31,11 @@ define i32 @jitentry() {
   %rFaddr = alloca i32, align 4
   store i32 %zero, i32 *%rFaddr, align 4
   br label %j00; initial startup
-;                     TRACE 000: a0100006
+;                     TRACE 000: a010000a
 j00:
   %X00 = add i32 0, 0
   %Y00 = add i32 0, 0
-  %C00 = add i32 %Y00, 6
+  %C00 = add i32 %Y00, 10
   %D00 = add i32 %X00, %C00
   store i32 %D00, i32 * %r1addr, align 4
   br label %j01

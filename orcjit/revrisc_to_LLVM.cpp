@@ -114,7 +114,7 @@ public:
 	void emit_arith(const std::string &op, int rD, int rX, int rY, int c)
 	{
 		std::string id = start_inst();
-		if (rD==0xF && rX==0 && rY==0) { // jump to a constant
+		if (rD==0xF && rX==0 && rY==0) { // special case: jump to a constant
 		    std::cout<<"  br label %"+label_pc(c)+"\n";
 		}
 		else { // General case
@@ -242,7 +242,7 @@ public:
 	void translate(const inst_t *inst,int n_inst,int count=1000,reg_t start=0)
 	{
 		// Emit prologue
-		std::cout<<"define i32 @jitentry() {\n";
+		std::cout<<"define i32 @jitentry(i32 %arg0) {\n";
 		
 		// Create a zero constant
 		std::cout<<"  %zero = add i32 0,0\n";
@@ -250,7 +250,11 @@ public:
 		// Reserve space for all the (mutable) registers, and zero them
 		for (int r=1;r<=0xF;r++) {
 			std::cout<<"  "+reg_addr(r)+" = alloca i32, align 4\n";
-			std::cout<<"  store i32 %zero, i32 *"+reg_addr(r)+", align 4\n";
+			std::string value = "%zero"; // initial value for this register
+			if (r==1) { // copy argument into register
+			    value = "%arg0";
+			}
+    	    std::cout<<"  store i32 "+value+", i32 *"+reg_addr(r)+", align 4\n";
 		}
 		
 		// Start the code
@@ -323,7 +327,7 @@ const static inst_t instructions[] = {
    0xFF300000, // print r3 and exit
 
 #else // full fibonacci
-   0xA0100006, // (n) fibonacci number desired 
+   0xA010000A, // Fill r1 with the fibonacci number desired (or use the r1 from argument)
    0xA0200000, // r2-r4 store the last three fibonacci numbers
    0xA0300001, 
    0xA0400001, 

@@ -32,7 +32,21 @@ Run with:
 
     ./jit
 
-This reads from in.ll, an LLVM IR file.
+This reads from in.ll, an LLVM IR file, optimizes it, and runs it.
+
+The generated code is slightly better optimized by LLVM opt:
+
+    opt -S --O3 in.ll
+
+
+## Translating to LLVM IR
+The revrisc_to_LLVM.cpp file demonstrates creating LLVM IR assembly from another language, in this case a toy machine code we developed called RevRISC.  The RevRISC machine code is hardcoded into revrisc_to_LLVM.cpp.  You can convert this machine code to LLVM IR (which overwrites "in.ll") with:
+
+    make revrisc_to_LLVM
+
+And then run jit or opt to see the resulting machine code.  With opt at --O3, LLVM is able to constant-propagate and unwind the 10th Fibonacci number to a fixed constant! 
+
+
 
 
 

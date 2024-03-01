@@ -287,7 +287,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Look up the code entry point
-    typedef long (*function_ptr)();
+    typedef long (*function_ptr)(long arg0);
     function_ptr run = reinterpret_cast<function_ptr>(
         jit.lookup("jitentry")
     );
@@ -296,7 +296,7 @@ int main(int argc, char *argv[]) {
     print_hex((void *)run,32);
 
     // Run the code
-    long result = run();
+    long result = run(6);
 
     // Show the returned value
     printf(" result %ld (%08lx)\n", result, result);
