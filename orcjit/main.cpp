@@ -206,6 +206,9 @@ void ExampleJIT::optimize(const std::unique_ptr<llvm::Module> &M)
     FPM->add(createInstructionCombiningPass());
     FPM->add(createCFGSimplificationPass());
     FPM->add(createReassociatePass());
+    FPM->add(createLoopUnrollPass());
+    
+    
     // FPM->add(new llvm::InlinerPass(false)); //   https://llvm.org/doxygen/classllvm_1_1InlinerPass.html
     
     
