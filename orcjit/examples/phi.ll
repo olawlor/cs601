@@ -15,7 +15,7 @@ brazil:
     br label %done
 
 done:
-  %z = phi i64 [%y, %peru], [%x, %argentina], [-1,%start]
+  %z = phi i64 [%y, %peru], [%x, %argentina], [-99, %brazil]
   ret i64 %z
 }
 
