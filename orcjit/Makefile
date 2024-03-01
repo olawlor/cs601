@@ -16,6 +16,10 @@ run: jit
 in.ll: examples/input.c Makefile
 	clang -S -emit-llvm $< -o $@
 
+revrisc_to_LLVM: revrisc_to_LLVM.cpp
+	clang++ $< -o $@
+	./$@ > in.ll
+
 clean:
 	-rm jit
 
