@@ -1,0 +1,20 @@
+Symbolic execution like CBMC, but based on LLVM.
+   https://klee.github.io/getting-started/
+
+
+
+docker pull klee/klee:3.0
+
+docker run -v `pwd`/examples:/examples --rm -ti klee/klee:3.0
+
+cd /examples
+
+clang -I ../../include -emit-llvm -c -g -O0 -Xclang -disable-O0-optnone main.cpp
+
+klee --emit-all-errors --ubsan-runtime main.bc
+
+ktest-tool klee-last/test000001.ktest
+
+
+
+
