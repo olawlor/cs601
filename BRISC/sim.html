@@ -397,6 +397,8 @@ with (BRISC) {
     BRISC.ret = function ret() {
         return asm(0x0C,0xE,0xF,0,0);
     }
+    
+    
 
 }; // end with(BRISC)
 
@@ -537,7 +539,7 @@ function toHex(number,places=2) {
         var digit = number&0xF;
         var c = "0123456789ABCDEF"[digit];
         ret = c + ret;
-        number = number>>4;
+        number = number>>>4; // subtle: unsigned right shift
     }
     return ret;
 }
