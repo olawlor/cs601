@@ -39,11 +39,11 @@ These are all the level 0 instructions:
 
 | Encoding | Mnemonic | Summary |
 |----------|----------|---------|
-| `0x0Ad ab ccc` | **ADD** | Add with signed 12-bit immediate |
-| `0x0Bd ab ccc` | **ROT** | Bitwise right rotation |
-| `0x0Cd ab ccc` | **CSWAP** | Conditional register swap |
-| `0x0Dd ab MIN` | **NAND** | Generalized NAND with optional inversions |
-| `0x0Ed ab MIN` | **MEM** | Memory read, write, or atomic swap |
+| `0x0A d ab ccc` | **ADD** | Add with signed 12-bit immediate |
+| `0x0B d ab ccc` | **ROT** | Bitwise right rotation |
+| `0x0C d ab ccc` | **CSWAP** | Conditional register swap |
+| `0x0D d ab MIN` | **NAND** | Generalized NAND with optional inversions |
+| `0x0E d ab MIN` | **MEM** | Memory read, write, or atomic swap |
 
 ### ADD — `0x0A d ab ccc`
 Does `r[d] = r[a] + r[b] + sign_extend(ccc)`
