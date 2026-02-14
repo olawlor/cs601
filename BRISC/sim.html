@@ -220,7 +220,7 @@ function exec_inst(inst)
         // Set up registers so the handler works like a function call:
         //  r1 = r[d], r2 = r[a], r3 = r[b], r4=ccc
         //  rE = address of cleanup code that writes back r[d] and restores registers
-        //  (Copies using array destructuring to avoid trashing e.g., r1 before it's used.
+        //  (Copies using array destructuring to avoid trashing e.g., r1 before it's used.)
         [ r[1], r[2], r[3], r[4] ] = [r[d], r[a], r[b], ccc];
         
         r[0xE] = handler_code_start; // cleanup code is here
@@ -368,6 +368,10 @@ with (BRISC) {
     {
         return asm(0x0A,d,a,b,ccc);
     }
+    BRISC.sub = function(d, a, b, ccc=0)
+    {
+        return asm(0x15,d,a,b,ccc);
+    }
     // Increment a register
     BRISC.inc = function(d, ccc=1)
     {
@@ -398,6 +402,10 @@ with (BRISC) {
         return asm(0x0C,0xE,0xF,0,0);
     }
     
+    // Bitwise NOT in registers
+    BRISC.not = function not(destReg,srcReg) {
+        return asm(0x0D,destReg,srcReg,0,0x001);
+    }
     
 
 }; // end with(BRISC)
@@ -458,6 +466,20 @@ function level1setup() {
             
             jumpreg(rE) // go to cleanup handler
         ]);
+        
+        // BORING level 1 subtract: 0x15dabccc
+        memory[opcode_table_start + 0x15] = codeAddr;
+        codeAddr = memcpy(codeAddr, [
+            // d=a-b-ccc
+            // d=a+ ~(b+ccc)+1
+            // r1=r2 + ~( r3  r4 ) +1
+            add(r3, r3,r4,0), // r3 = b+ccc
+            not(r3,r3), // r3=~(b+ccc)
+            add(r1,r2,r3,1), // +1
+            
+            jumpreg(rE) // go to cleanup handler
+        ]);
+        
         // Level 2 example: 0x2Anm0000  push m and then pop into n
         memory[opcode_table_start + 0x2A] = codeAddr;
         codeAddr = memcpy(codeAddr, [
@@ -854,6 +876,8 @@ rF
 <textarea id="code" name="code" rows="35" cols="60" spellcheck="false">
 //  0xopdabmin:
     set(r4, 0x555),  // load 555 into r4
+    set(r6, 0x010), // another constant in r6
+    0x15146000, // level 1: subtract r4-r6 into r1
     0x2A540000, // level 2: push r4, pop into r5
     set(r7, 9), // address of end of loop
     set(r8, 0), // loop counter starts at 0
