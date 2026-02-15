@@ -2,13 +2,13 @@
 #OPTS=-O3
 OPTS=
 
-LLVMFLAGS= `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` 
+LLVMFLAGS= -fuse-ld=lld  `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` 
 
 
 all: jit
 
 jit: main.cpp
-	clang++ $(OPTS) $(LLVMFLAGS) $< -o $@
+	clang++ $(OPTS) $< -o $@ $(LLVMFLAGS) 
 
 run: jit
 	./jit
