@@ -879,23 +879,22 @@ rF
     set(r6, 0x010), // another constant in r6
     0x15146000, // level 1: subtract r4-r6 into r1
     0x2A540000, // level 2: push r4, pop into r5
-    set(r7, 9), // address of end of loop
+    set(r7, 0x0B), // address of end of loop
     set(r8, 0), // loop counter starts at 0
     set(r9, 0), // total starts at 0
         inc(r9,10), // LOOP: r9 += 10
         inc(r8), // r8++
         swapcond(rF,r7, r8,5), // if counter>=5 goto end
-        jump(5), // <- FIXME if loopstart changes!
-    set(rE, 0x0C),  // FIXME rE = (address to call)
+        jump(7), // <- FIXME if loopstart changes!
+    set(rE, 0x0F),  // FIXME rE = (address to call)
     callE(),  // call function at rE
     set(r6,99), // demo return from function below
     0x0B140008,  // bit rotate r4 by 8 into r1
         write(r4, 0, 0x19),  // FUNCTION: write r4 to mem
         ret(),  // return to rE
-
-// Other examples:
     0x1AA40000, // level 1 test: push r4
     0x1BA50000, // level 1 test: pop into r5
+	jump(0x13), // hang here
 </textarea>
 <!--
 
